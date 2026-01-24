@@ -17,7 +17,7 @@ def to_jsonable(obj):
     return obj
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
@@ -128,6 +128,16 @@ SECTION_ORDER = [
     "measures",
     "export",
 ]
+
+
+def main_menu():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📝 новое отклонение")],
+            [KeyboardButton(text="🤖 генерация"), KeyboardButton(text="👁 просмотр")]
+        ],
+        resize_keyboard=True
+    )
 
 SECTION_TITLES = {
     "essence": "📝 формулировки отклонения",
