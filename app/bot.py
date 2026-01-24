@@ -237,7 +237,7 @@ async def check_password(m: Message, state: FSMContext):
     if m.text.strip() == VALID_PASSWORD:
         authorize_user(m.from_user.id)
         await state.clear()
-        await m.answer("✅ Доступ разрешён! Используйте /start для начала работы")
+        await m.answer("✅ Доступ разрешён! Используйте /start для начала работы", reply_markup=main_menu())
     else:
         await m.answer("❌ Неверный пароль. Попробуйте ещё раз:")
 
