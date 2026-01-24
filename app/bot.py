@@ -587,31 +587,6 @@ async def main():
     await dp.start_polling(bot)
 
 
-@dp.message(F.text)
-async def check_code(m: Message):
-    # проверка кода доступа
-    if not is_authorized(m.from_user.id):
-        if m.text.strip() == ACCESS_CODE:
-            authorize(m.from_user.id)
-            await m.answer(
-                "✅ Доступ разрешён на сегодня!\n\n"
-                "⚠️ ВНИМАНИЕ - ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ:\n\n"
-                "Данный бот НЕ предназначен для обработки информации, содержащей:\n"
-                "• Государственную тайну (ФЗ-5487-1)\n"
-                "• Коммерческую тайну (ФЗ-98)\n"
-                "• Персональные данные (ФЗ-152)\n"
-                "• Инсайдерскую информацию (ФЗ-224)\n\n"
-                "Команды: /new, /build N, /preview N",
-                reply_markup=main_menu()
-            )
-        else:
-            await m.answer("❌ Неверный код")
-        return
-    
-    # если это не команда - считаем что это описание отклонения
-    if not m.text.startswith("/"):
-        return  # пропускаем, обработается в другом месте
-
 
 if __name__ == "__main__":
     import asyncio
