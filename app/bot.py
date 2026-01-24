@@ -378,7 +378,7 @@ async def preview(m: Message):
         if "alternatives" in risk and len(risk["alternatives"]) >= 1:
             classification_text += f"2. {risk['alternatives'][0]}\n\n"
     
-    await m.answer(classification_text)  # БЕЗ parse_mode="HTML"
+    await m.answer(classification_text)  # БЕЗ 
     
     txt = "\nВыберите варианты разделов:"
     await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
@@ -399,7 +399,7 @@ async def cb_back(q: CallbackQuery):
         f"риск: {risk_title(selected.get('risk',{}).get('primary_id',''))}\n\n"
         "выбери раздел:"
     )
-    await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup(), parse_mode="HTML")
+    await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup(), )
     await q.answer()
 
 @dp.callback_query(F.data.startswith("sec|"))
@@ -410,7 +410,7 @@ async def cb_section(q: CallbackQuery):
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
-    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="HTML")
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
     await q.answer()
 
 @dp.callback_query(F.data.startswith("var|"))
@@ -423,7 +423,7 @@ async def cb_var(q: CallbackQuery):
     row = get_deviation(con, dev_id)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
-    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="HTML")
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
     await q.answer("ок")
 
 @dp.callback_query(F.data.startswith("mode|"))
@@ -436,7 +436,7 @@ async def cb_mode(q: CallbackQuery):
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
-    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="HTML")
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
     await q.answer("переключил")
 
 @dp.callback_query(F.data.startswith("custom|"))
@@ -476,7 +476,7 @@ async def custom_text_input(m: Message, state: FSMContext):
         mode = get_view_mode(row, section_key)
         txt = render_section(row, section_key)
         
-        await m.answer(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="HTML")
+        await m.answer(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
         await state.clear()
     else:
         await m.answer("Ошибка: раздел не найден")
@@ -552,7 +552,7 @@ async def cb_regen(q: CallbackQuery):
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
-    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="HTML")
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
     await q.answer("готово")
 
 # @dp.callback_query(F.data.startswith("summary|"))
