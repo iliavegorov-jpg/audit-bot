@@ -1,0 +1,440 @@
+import json
+_loads = lambda s: json.loads(s) if s else {}
+import json
+_loads = lambda s: json.loads(s) if s else {}
+import os
+from typing import Dict, Any
+
+
+def to_jsonable(obj):
+    # recursively convert pydantic models / dataclasses to plain jsonable types
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return {k: to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [to_jsonable(v) for v in obj]
+    return obj
+
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+
+
+def cat_title(cat_id: str) -> str:
+    for c in CATEGORIES:
+        obj = c.model_dump() if hasattr(c, 'model_dump') else c
+        if isinstance(obj, dict):
+            cid = obj.get('id') or obj.get('code')
+            if cid == cat_id:
+                return obj.get('title') or obj.get('name') or cat_id
+    return cat_id
+
+def risk_title(risk_id: str) -> str:
+    for r in RISKS:
+        obj = r.model_dump() if hasattr(r, 'model_dump') else r
+        if isinstance(obj, dict):
+            rid = obj.get('id') or obj.get('code')
+            if rid == risk_id:
+                return obj.get('title') or obj.get('name') or risk_id
+    return risk_id
+from .config import get_settings
+from .db import (
+    connect, init_db, create_deviation, get_deviation, update_deviation,
+    get_chosen_variant, set_chosen_variant, get_view_mode, toggle_view_mode
+)
+from .dicts import load_dict
+from .yandex_llm import YandexLLM
+from .claude_llm import ClaudeLLM
+from .semantic import topk_candidates, load_cached_matrices
+from .models import UserInput, LLMResponse
+from .prompts import SYSTEM_PROMPT, build_user_prompt, build_regen_prompt
+from .exporter import export_docx
+
+SET = get_settings()
+
+con = connect(SET.sqlite_path)
+init_db(con)
+
+bot = Bot(token=SET.bot_token)
+dp = Dispatcher()
+
+class NewDeviation(StatesGroup):
+    problem_text = State()
+    process_object = State()
+    period = State()
+    participants_roles = State()
+    what_violated = State()
+    amounts_terms = State()
+    documents = State()
+
+# dictionaries
+CATEGORIES = load_dict("./data/deviation_categories.json")
+RISKS = load_dict("./data/risks.json")
+
+llm_embeddings = YandexLLM(
+    api_key=SET.yc_api_key,
+    completion_model_uri=SET.yc_completion_model_uri,
+    embedding_model_uri=SET.yc_embedding_model_uri,
+    embedding_dim=SET.yc_embedding_dim,
+)
+
+llm = ClaudeLLM(api_key=SET.claude_api_key)
+CAT_MAT, RISK_MAT = load_cached_matrices()
+if CAT_MAT is None or RISK_MAT is None:
+    print("[WARN] нет кэша эмбеддингов. запусти: python -m app.precompute (один раз), потом перезапусти бота")
+    # fallback: медленно посчитаем при старте, но лучше не надо
+    from .semantic import precompute_embeddings
+    CAT_MAT = precompute_embeddings(llm_embeddings, CATEGORIES)
+    RISK_MAT = precompute_embeddings(llm_embeddings, RISKS)
+
+SECTION_ORDER = [
+    "essence",
+    "root_causes",
+    "business_consequences",
+    "cost_calculation",
+    "risk_factors",
+    "risk_cost_pxI",
+    "rsbu_checks",
+    "ifrs_checks",
+    "measures",
+    "final_summary",
+]
+
+SECTION_TITLES = {
+    "essence": "описание отклонения",
+    "root_causes": "коренные причины",
+    "business_consequences": "последствия для бизнеса",
+    "cost_calculation": "стоимость отклонения",
+    "risk_factors": "риск-факторы",
+    "risk_cost_pxI": "стоимость риска (p×i)",
+    "rsbu_checks": "рсбу: проводки и проверки",
+    "ifrs_checks": "мсфо: корректировки",
+    "measures": "мероприятия",
+    "final_summary": "итоговое резюме",
+}
+
+def kb_sections(dev_id: int) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for key in SECTION_ORDER:
+        kb.button(text=SECTION_TITLES[key], callback_data=f"sec|{dev_id}|{key}")
+    kb.adjust(1)
+    return kb
+
+def kb_section_controls(dev_id: int, section_key: str, current_idx: int, mode: str):
+    """кнопки: выбор варианта 1/2/3 + назад"""
+    kb = InlineKeyboardBuilder()
+    
+    # кнопки выбора варианта
+    for i in range(3):
+        marker = "✓ " if i == current_idx else ""
+        kb.button(
+            text=f"{marker}вариант {i+1}",
+            callback_data=f"var|{dev_id}|{section_key}|{i}"
+        )
+    
+    kb.adjust(3)
+    
+    # назад
+    kb.button(text="← назад", callback_data=f"back|{dev_id}")
+    
+    return kb.as_markup()
+
+def render_section(row: Dict[str, Any], section_key: str) -> str:
+    sections = _loads(row.get("sections_json"))
+    if section_key not in sections:
+        return "нет данных по разделу (сначала /build)"
+    idx = get_chosen_variant(row, section_key)
+    mode = get_view_mode(row, section_key)
+    variants = sections[section_key].get("variants", [])
+    if not variants:
+        return "нет вариантов"
+    idx = max(0, min(idx, len(variants)-1))
+    text = variants[idx] if isinstance(variants[idx], str) else str(variants[idx])
+    title = SECTION_TITLES.get(section_key, section_key)
+    return f"**{title}\n\n{text}"
+
+@dp.message(Command("start"))
+async def start(m: Message):
+    await m.answer(
+        "ок. команды:\n"
+        "/new — новая карточка\n"
+        "/build <id> — сгенерить отчёт\n"
+        "/preview <id> — меню разделов\n"
+        "/export <id> — выгрузка docx"
+    )
+
+@dp.message(Command("new"))
+async def new(m: Message, state: FSMContext):
+    await state.set_state(NewDeviation.problem_text)
+    await m.answer("опиши проблему (1–10 предложений). без фио/номеров договоров.")
+
+@dp.message(NewDeviation.problem_text)
+async def st1(m: Message, state: FSMContext):
+    await state.update_data(problem_text=m.text.strip())
+    await state.set_state(NewDeviation.process_object)
+    await m.answer("где произошло (процесс/объект)?")
+
+@dp.message(NewDeviation.process_object)
+async def st2(m: Message, state: FSMContext):
+    await state.update_data(process_object=m.text.strip())
+    await state.set_state(NewDeviation.period)
+    await m.answer("когда (период/дата)?")
+
+@dp.message(NewDeviation.period)
+async def st3(m: Message, state: FSMContext):
+    await state.update_data(period=m.text.strip())
+    await state.set_state(NewDeviation.participants_roles)
+    await m.answer("кто участвовал (только роли/подразделения). можно 'пропустить'.")
+
+@dp.message(NewDeviation.participants_roles)
+async def st4(m: Message, state: FSMContext):
+    txt = "" if m.text.lower().strip() == "пропустить" else m.text.strip()
+    await state.update_data(participants_roles=txt)
+    await state.set_state(NewDeviation.what_violated)
+    await m.answer("что нарушено (регламент/договор/процедура). можно 'пропустить'.")
+
+@dp.message(NewDeviation.what_violated)
+async def st5(m: Message, state: FSMContext):
+    txt = "" if m.text.lower().strip() == "пропустить" else m.text.strip()
+    await state.update_data(what_violated=txt)
+    await state.set_state(NewDeviation.amounts_terms)
+    await m.answer("суммы/сроки/объёмы (если есть). можно 'пропустить'.")
+
+@dp.message(NewDeviation.amounts_terms)
+async def st6(m: Message, state: FSMContext):
+    txt = "" if m.text.lower().strip() == "пропустить" else m.text.strip()
+    await state.update_data(amounts_terms=txt)
+    await state.set_state(NewDeviation.documents)
+    await m.answer("какие документы есть (типы). можно 'пропустить'.")
+
+@dp.message(NewDeviation.documents)
+async def st7(m: Message, state: FSMContext):
+    txt = "" if m.text.lower().strip() == "пропустить" else m.text.strip()
+    data = await state.get_data()
+    data["documents"] = txt
+
+    ui = UserInput(**data).model_dump()
+    dev_id = create_deviation(con, telegram_user_id=m.from_user.id, user_input=ui)
+    await state.clear()
+    await m.answer(f"черновик создан: id={dev_id}\n/build {dev_id} — сгенерировать конструктор")
+
+@dp.message(Command("build"))
+async def build(m: Message):
+    parts = m.text.split()
+    if len(parts) < 2:
+        await m.answer("используй: /build <id>")
+        return
+    dev_id = int(parts[1])
+    row = get_deviation(con, dev_id)
+    ui = json.loads(row["user_input_json"])
+    ui_obj = UserInput(**ui)
+
+    await m.answer("генерирую… (семантика + yandexgpt)")
+
+    candidates = topk_candidates(llm_embeddings, ui_obj, CATEGORIES, RISKS, CAT_MAT, RISK_MAT, k=20)
+
+    messages = [
+        {"role": "system", "text": SYSTEM_PROMPT},
+        {"role": "user", "text": build_user_prompt(ui, candidates)},
+    ]
+    raw = llm.completion(messages, temperature=0.2, max_tokens=16000)
+
+    # --- clean model output (remove ```json fences etc.) ---
+    clean = raw.strip()
+    if clean.startswith("```"):
+        clean = clean.split("\n", 1)[1] if "\n" in clean else ""
+        if "```" in clean:
+            clean = clean.rsplit("```", 1)[0]
+    clean = clean.strip()
+    # ------------------------------------------------------
+
+    try:
+        data = json.loads(clean)
+        parsed = LLMResponse(**data)
+    except Exception as e:
+        await m.answer(f"gpt вернул невалидный json. ошибка: {e}\nсырец (первые 1200 символов):\n{raw[:1200]}")
+        return
+
+    sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
+    update_deviation(con, dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
+    await m.answer(f"готово. /preview {dev_id}")
+
+@dp.message(Command("preview"))
+async def preview(m: Message):
+    parts = m.text.split()
+    if len(parts) < 2:
+        await m.answer("используй: /preview <id>")
+        return
+    dev_id = int(parts[1])
+    row = get_deviation(con, dev_id)
+    if not row.get("sections_json"):
+        await m.answer("нет генерации. сначала /build")
+        return
+
+    selected = _loads(row.get("selected_json"))
+    txt = (
+        f"**id {dev_id}**\n"
+        f"категория: {cat_title(selected.get('deviation_category',{}).get('primary_id',''))}\n"
+        f"риск: {risk_title(selected.get('risk',{}).get('primary_id',''))}\n\n"
+        "выбери раздел:"
+    )
+    await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
+
+@dp.message(Command("export"))
+async def export_cmd(m: Message):
+    parts = m.text.split()
+    if len(parts) < 2:
+        await m.answer("используй: /export <id>")
+        return
+    dev_id = int(parts[1])
+    row = get_deviation(con, dev_id)
+    if not row.get("sections_json"):
+        await m.answer("нет генерации. сначала /build")
+        return
+
+    user_input = _loads(row.get("user_input_json"))
+    selected = _loads(row.get("selected_json"))
+    sections = _loads(row.get("sections_json"))
+    chosen = _loads(row.get("chosen_variants_json"))
+    view_mode = _loads(row.get("view_mode_json"))
+
+    out_path = f"./exports/deviation_{dev_id}.docx"
+    p = export_docx(out_path, dev_id, user_input, selected, sections, chosen, view_mode)
+    await m.answer_document(open(p, "rb"), caption=f"docx экспорт: deviation_{dev_id}.docx")
+
+@dp.callback_query(F.data.startswith("back|"))
+async def cb_back(q: CallbackQuery):
+    _, dev_id = q.data.split("|", 1)
+    dev_id = int(dev_id)
+    row = get_deviation(con, dev_id)
+    selected = _loads(row.get("selected_json"))
+    txt = (
+        f"**id {dev_id}**\n"
+        f"категория: {cat_title(selected.get('deviation_category',{}).get('primary_id',''))}\n"
+        f"риск: {risk_title(selected.get('risk',{}).get('primary_id',''))}\n\n"
+        "выбери раздел:"
+    )
+    await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup(), parse_mode="Markdown")
+    await q.answer()
+
+@dp.callback_query(F.data.startswith("sec|"))
+async def cb_section(q: CallbackQuery):
+    _, dev_id, section_key = q.data.split("|", 2)
+    dev_id = int(dev_id)
+    row = get_deviation(con, dev_id)
+    idx = get_chosen_variant(row, section_key)
+    mode = get_view_mode(row, section_key)
+    txt = render_section(row, section_key)
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="Markdown")
+    await q.answer()
+
+@dp.callback_query(F.data.startswith("var|"))
+async def cb_var(q: CallbackQuery):
+    _, dev_id, section_key, idx = q.data.split("|", 3)
+    dev_id = int(dev_id)
+    idx = int(idx)
+    row = get_deviation(con, dev_id)
+    set_chosen_variant(con, dev_id, row, section_key, idx)
+    row = get_deviation(con, dev_id)
+    mode = get_view_mode(row, section_key)
+    txt = render_section(row, section_key)
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="Markdown")
+    await q.answer("ок")
+
+@dp.callback_query(F.data.startswith("mode|"))
+async def cb_mode(q: CallbackQuery):
+    _, dev_id, section_key = q.data.split("|", 2)
+    dev_id = int(dev_id)
+    row = get_deviation(con, dev_id)
+    toggle_view_mode(con, dev_id, row, section_key)
+    row = get_deviation(con, dev_id)
+    idx = get_chosen_variant(row, section_key)
+    mode = get_view_mode(row, section_key)
+    txt = render_section(row, section_key)
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="Markdown")
+    await q.answer("переключил")
+
+@dp.callback_query(F.data.startswith("regen|"))
+async def cb_regen(q: CallbackQuery):
+    _, dev_id, section_key = q.data.split("|", 2)
+    dev_id = int(dev_id)
+    row = get_deviation(con, dev_id)
+    if not row.get("sections_json"):
+        await q.answer("сначала /build", show_alert=True)
+        return
+
+    ui = _loads(row.get("user_input_json"))
+    selected = _loads(row.get("selected_json"))
+    sections = _loads(row.get("sections_json"))
+
+    # candidates for context (same as build)
+    ui_obj = UserInput(**ui)
+    candidates = topk_candidates(llm_embeddings, ui_obj, CATEGORIES, RISKS, CAT_MAT, RISK_MAT, k=20)
+
+    await q.answer("regen…", show_alert=False)
+
+    messages = [
+        {"role": "system", "text": SYSTEM_PROMPT},
+        {"role": "user", "text": build_regen_prompt(ui, selected, section_key, old_variants, candidates)},
+    ]
+    raw = llm.completion(messages, temperature=0.25, max_tokens=16000)
+
+    # --- clean regen output ---
+    clean_regen = raw.strip()
+    if clean_regen.startswith("```"):
+        clean_regen = clean_regen.split("\n", 1)[1] if "\n" in clean_regen else ""
+        if "```" in clean_regen:
+            clean_regen = clean_regen.rsplit("```", 1)[0]
+    clean_regen = clean_regen.strip()
+    # --------------------------
+
+    try:
+        data = json.loads(clean_regen)
+        if data.get("section_key") != section_key:
+            raise ValueError("section_key mismatch")
+        new_variants = data["variants"]
+        # basic shape validation + pad/cut to 5 variants
+        if not isinstance(new_variants, list):
+            raise ValueError("variants must be list")
+
+        if len(new_variants) < 3:
+            raise ValueError("variants must be list of 3..5")
+
+        # pad to 5 if model returned only 3-4
+        while len(new_variants) < 5:
+            base = new_variants[-1] if new_variants else {"short": "", "full": ""}
+            short = (base.get("short") or "").strip()
+            full = (base.get("full") or "").strip()
+            new_variants.append({
+                "short": (short + " (вариант добавлен автоматически)") if short else "вариант добавлен автоматически",
+                "full": (full + "\\n\\n(вариант добавлен автоматически: модель вернула меньше 5)") if full else "(вариант добавлен автоматически: модель вернула меньше 5)"
+            })
+
+        # cut to 5 if model returned more
+        if len(new_variants) > 5:
+            new_variants = new_variants[:5]
+
+        sections[section_key] = {"variants": new_variants}
+        update_deviation(con, dev_id, sections=sections)
+    except Exception as e:
+        await q.message.answer(f"regen упал: {e}\nсырец (до 900):\n{raw[:900]}")
+        return
+
+    row = get_deviation(con, dev_id)
+    idx = get_chosen_variant(row, section_key)
+    mode = get_view_mode(row, section_key)
+    txt = render_section(row, section_key)
+    await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), parse_mode="Markdown")
+    await q.answer("готово")
+
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

@@ -1,0 +1,7 @@
+aiogram==3.24.0
+openai
+pydantic
+python-docx
+python-dotenv
+numpy
+requests
