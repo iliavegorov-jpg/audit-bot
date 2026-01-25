@@ -63,24 +63,16 @@ SET = get_settings()
 con = connect(SET.sqlite_path)
 init_db(con)
 
-# Создаём таблицу для авторизованных пользователей
-con.execute("""
-CREATE TABLE IF NOT EXISTS authorized_users (
-    user_id INTEGER PRIMARY KEY,
-    authorized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-con.commit()
+# Авторизация через db.py (поддержка PostgreSQL)
+from .db import is_user_authorized, authorize_user as db_authorize_user
 
 def is_authorized(user_id: int) -> bool:
-    """Проверка авторизации пользователя"""
-    cur = con.execute("SELECT 1 FROM authorized_users WHERE user_id = ?", (user_id,))
-    return cur.fetchone() is not None
+    """Проверка авторизации пользователя (раз в сутки)"""
+    return is_user_authorized(con, user_id)
 
 def authorize_user(user_id: int):
     """Добавление пользователя в список авторизованных"""
-    con.execute("INSERT OR IGNORE INTO authorized_users (user_id) VALUES (?)", (user_id,))
-    con.commit()
+    db_authorize_user(con, user_id)
 
 bot = Bot(token=SET.bot_token)
 dp = Dispatcher()
