@@ -349,10 +349,32 @@ async def handle_full_description(m: Message, state: FSMContext):
         await progress_msg.delete()
         
         selected = to_jsonable(parsed.selected)
+        
+        cat = selected.get('deviation_category', {})
+        risk = selected.get('risk', {})
+        
+        cat_primary = cat.get('primary_id', 'Не определена')
+        cat_alts = cat.get('alternatives', [])
+        cat_alt = cat_alts[0] if cat_alts else 'Не определена'
+        cat_rationale = cat.get('rationale', '')
+        
+        risk_primary = risk.get('primary_id', 'Не определён')
+        risk_alts = risk.get('alternatives', [])
+        risk_alt = risk_alts[0] if risk_alts else 'Не определён'
+        risk_rationale = risk.get('rationale', '')
+        
         txt = (
             f"✅ Анализ готов!\n\n"
-            f"Категория: {selected['deviation_category']['primary_id']}\n"
-            f"Риск: {selected['risk']['primary_id']}\n\n"
+            f"━━━ ВЫБОР КАТЕГОРИЙ ИЗ 1С СВКиА ━━━\n\n"
+            f"📋 КАТЕГОРИИ ОТКЛОНЕНИЯ:\n"
+            f"1️⃣ {cat_primary}\n"
+            f"2️⃣ {cat_alt}\n"
+            f"💬 {cat_rationale}\n\n"
+            f"⚠️ КАТЕГОРИИ РИСКОВ:\n"
+            f"1️⃣ {risk_primary}\n"
+            f"2️⃣ {risk_alt}\n"
+            f"💬 {risk_rationale}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"Выбери раздел для просмотра:"
         )
         await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
