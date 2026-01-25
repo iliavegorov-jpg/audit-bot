@@ -181,8 +181,8 @@ def render_section(row: Dict[str, Any], section_key: str) -> str:
     else:
         return "неверный формат данных раздела"
     
-    title = SECTION_TITLES.get(section_key, section_key)
-    result = f"{title.upper()}\n\n{text}"
+    # заголовок уже в тексте от LLM
+    result = text
     
     # telegram limit 4096 chars, обрезаем если больше
     if len(result) > 4000:
