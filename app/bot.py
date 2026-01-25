@@ -375,6 +375,8 @@ async def handle_full_description(m: Message, state: FSMContext):
             f"Выбери раздел для просмотра:"
         )
         await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
+        # добавляем кнопку "новое отклонение" внизу
+        await m.answer("👇 Для нового анализа:", reply_markup=main_menu())
         
     except Exception as e:
         await progress_msg.edit_text(f"❌ Ошибка генерации: {e}")
