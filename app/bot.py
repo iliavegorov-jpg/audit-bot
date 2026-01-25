@@ -126,7 +126,6 @@ SECTION_ORDER = [
     "rsbu_checks",
     "ifrs_checks",
     "measures",
-    "export",
 ]
 
 
@@ -148,7 +147,6 @@ SECTION_TITLES = {
     "rsbu_checks": "📒 РСБУ: проводки и проверки",
     "ifrs_checks": "📘 МСФО: корректировки",
     "measures": "✅ корректирующие меры",
-    "export": "📄 экспорт отчёта",
 }
 
 def kb_sections(dev_id: int) -> InlineKeyboardBuilder:
@@ -181,8 +179,14 @@ def render_section(row: Dict[str, Any], section_key: str) -> str:
     else:
         return "неверный формат данных раздела"
     
-    # заголовок уже в тексте от LLM
-    result = text
+    # некоторые разделы не имеют заголовка в тексте LLM
+    sections_without_title = ["essence", "root_causes", "risk_cost_scenarios", "risk_factors", "corrective_actions"]
+    
+    if section_key in sections_without_title:
+        title = SECTION_TITLES.get(section_key, section_key)
+        result = f"{title.upper()}\n\n{text}"
+    else:
+        result = text
     
     # telegram limit 4096 chars, обрезаем если больше
     if len(result) > 4000:
