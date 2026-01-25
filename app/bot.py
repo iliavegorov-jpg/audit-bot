@@ -285,7 +285,28 @@ async def handle_full_description(m: Message, state: FSMContext):
         
         candidates = topk_candidates(llm_embeddings, ui_obj, CATEGORIES, RISKS, CAT_MAT, RISK_MAT, k=20)
         
-        await progress_msg.edit_text("⏳ Генерирую анализ (Claude AI)...\n\n██████░░░░ 60%")
+        # запускаем фейковый прогресс параллельно с генерацией
+        import asyncio
+        
+        async def fake_progress():
+            stages = [
+                ("⏳ Генерирую анализ (Claude AI)...\n\n██████░░░░ 60%", 0),
+                ("⏳ Анализирую структуру...\n\n██████▒░░░ 65%", 20),
+                ("⏳ Формирую классификацию...\n\n███████░░░ 70%", 20),
+                ("⏳ Рассчитываю стоимость риска...\n\n███████▒░░ 75%", 25),
+                ("⏳ Определяю риск-факторы...\n\n████████░░ 80%", 25),
+                ("⏳ Генерирую корр. мероприятия...\n\n████████▒░ 85%", 25),
+                ("⏳ Финализирую анализ...\n\n█████████░ 90%", 25),
+            ]
+            for text, delay in stages:
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                try:
+                    await progress_msg.edit_text(text)
+                except:
+                    pass
+        
+        progress_task = asyncio.create_task(fake_progress())
         
         messages = [
             {"role": "system", "text": SYSTEM_PROMPT},
@@ -293,7 +314,8 @@ async def handle_full_description(m: Message, state: FSMContext):
         ]
         raw = llm.completion(messages, temperature=0.2, max_tokens=16000)
         
-        await progress_msg.edit_text("⏳ Обрабатываю результат...\n\n████████░░ 80%")
+        progress_task.cancel()
+        await progress_msg.edit_text("⏳ Обрабатываю результат...\n\n█████████▒ 95%")
         
         clean = raw.strip()
         if clean.startswith("```"):
