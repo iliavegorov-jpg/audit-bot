@@ -312,7 +312,12 @@ async def handle_full_description(m: Message, state: FSMContext):
             {"role": "system", "text": SYSTEM_PROMPT},
             {"role": "user", "text": build_user_prompt(ui, candidates)},
         ]
-        raw = llm.completion(messages, temperature=0.2, max_tokens=16000)
+        
+        # запускаем синхронный LLM в executor чтобы прогресс работал
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            raw = await loop.run_in_executor(pool, lambda: llm.completion(messages, temperature=0.2, max_tokens=16000))
         
         progress_task.cancel()
         await progress_msg.edit_text("⏳ Обрабатываю результат...\n\n█████████▒ 95%")
