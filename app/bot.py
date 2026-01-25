@@ -312,11 +312,11 @@ async def handle_full_description(m: Message, state: FSMContext):
         
         await progress_msg.delete()
         
-        selected = parsed.selected
+        selected = to_jsonable(parsed.selected)
         txt = (
             f"✅ Анализ готов!\n\n"
-            f"Категория: {selected.deviation_category.primary_id}\n"
-            f"Риск: {selected.risk.primary_id}\n\n"
+            f"Категория: {selected['deviation_category']['primary_id']}\n"
+            f"Риск: {selected['risk']['primary_id']}\n\n"
             f"Выбери раздел для просмотра:"
         )
         await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
