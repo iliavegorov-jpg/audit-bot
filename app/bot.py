@@ -60,19 +60,25 @@ VALID_PASSWORD = "audit_2026"
 
 SET = get_settings()
 
-con = connect(SET.sqlite_path)
-init_db(con)
+# создаём соединение для каждого запроса (thread-safe)
+def get_con():
+    return connect(SET.sqlite_path)
+
+# инициализируем БД один раз при старте
+_init_con = get_con()
+init_db(_init_con)
+_init_con.close()
 
 # Авторизация через db.py (поддержка PostgreSQL)
 from .db import is_user_authorized, authorize_user as db_authorize_user
 
 def is_authorized(user_id: int) -> bool:
     """Проверка авторизации пользователя (раз в сутки)"""
-    return is_user_authorized(con, user_id)
+    return is_user_authorized(get_con(), user_id)
 
 def authorize_user(user_id: int):
     """Добавление пользователя в список авторизованных"""
-    db_authorize_user(con, user_id)
+    db_authorize_user(get_con(), user_id)
 
 bot = Bot(token=SET.bot_token)
 dp = Dispatcher()
@@ -264,7 +270,7 @@ async def handle_full_description(m: Message, state: FSMContext):
         documents=""
     ).model_dump()
     
-    dev_id = create_deviation(con, telegram_user_id=m.from_user.id, user_input=ui)
+    dev_id = create_deviation(get_con(), telegram_user_id=m.from_user.id, user_input=ui)
     await state.clear()
     
     # Автоматическая генерация с прогресс-баром
@@ -273,7 +279,7 @@ async def handle_full_description(m: Message, state: FSMContext):
     try:
         await progress_msg.edit_text("⏳ Анализирую описание...\n\n██░░░░░░░░ 20%")
         
-        row = get_deviation(con, dev_id)
+        row = get_deviation(get_con(), dev_id)
         ui_data = json.loads(row["user_input_json"])
         ui_obj = UserInput(**ui_data)
         
@@ -340,7 +346,7 @@ async def handle_full_description(m: Message, state: FSMContext):
         await progress_msg.edit_text("⏳ Сохраняю результат...\n\n██████████ 100%")
         
         sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
-        update_deviation(con, dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
+        update_deviation(get_con(), dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
         
         await progress_msg.delete()
         
@@ -393,7 +399,7 @@ async def build(m: Message):
         await m.answer("используй: /build <id>")
         return
     dev_id = int(parts[1])
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     ui = json.loads(row["user_input_json"])
     ui_obj = UserInput(**ui)
 
@@ -438,7 +444,7 @@ async def build(m: Message):
         return
 
     sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
-    update_deviation(con, dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
+    update_deviation(get_con(), dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
     await m.answer(f"Готово!\n/preview {dev_id} — просмотр и выбор вариантов разделов")
 
 @dp.message(Command("preview"))
@@ -453,7 +459,7 @@ async def preview(m: Message):
         await m.answer("используй: /preview <id>")
         return
     dev_id = int(parts[1])
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     if not row.get("sections_json"):
         await m.answer("нет генерации. сначала /build")
         return
@@ -495,7 +501,7 @@ async def preview(m: Message):
 async def cb_back(q: CallbackQuery):
     _, dev_id = q.data.split("|", 1)
     dev_id = int(dev_id)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     selected = _loads(row.get("selected_json"))
     
     cat = selected.get('deviation_category', {})
@@ -540,7 +546,7 @@ async def cb_back(q: CallbackQuery):
 async def cb_section(q: CallbackQuery):
     _, dev_id, section_key = q.data.split("|", 2)
     dev_id = int(dev_id)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
@@ -552,9 +558,9 @@ async def cb_var(q: CallbackQuery):
     _, dev_id, section_key, idx = q.data.split("|", 3)
     dev_id = int(dev_id)
     idx = int(idx)
-    row = get_deviation(con, dev_id)
-    set_chosen_variant(con, dev_id, row, section_key, idx)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
+    set_chosen_variant(get_con(), dev_id, row, section_key, idx)
+    row = get_deviation(get_con(), dev_id)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
     await q.message.edit_text(txt, reply_markup=kb_section_controls(dev_id, section_key, idx, mode), )
@@ -564,9 +570,9 @@ async def cb_var(q: CallbackQuery):
 async def cb_mode(q: CallbackQuery):
     _, dev_id, section_key = q.data.split("|", 2)
     dev_id = int(dev_id)
-    row = get_deviation(con, dev_id)
-    toggle_view_mode(con, dev_id, row, section_key)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
+    toggle_view_mode(get_con(), dev_id, row, section_key)
+    row = get_deviation(get_con(), dev_id)
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
@@ -589,7 +595,7 @@ async def custom_text_input(m: Message, state: FSMContext):
     custom_text = m.text
     
     # сохраняем custom вариант как 4-й (индекс 3)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     sections_data = json.loads(row["sections_json"])
     
     if section_key in sections_data:
@@ -600,12 +606,12 @@ async def custom_text_input(m: Message, state: FSMContext):
             sections_data[section_key]["variants"][3] = custom_text
         
         # обновляем в БД
-        update_deviation(con, dev_id, sections=sections_data)
+        update_deviation(get_con(), dev_id, sections=sections_data)
         
         # устанавливаем выбранный вариант на 4-й
-        set_chosen_variant(con, dev_id, row, section_key, 3)
+        set_chosen_variant(get_con(), dev_id, row, section_key, 3)
         
-        row = get_deviation(con, dev_id)
+        row = get_deviation(get_con(), dev_id)
         idx = 3
         mode = get_view_mode(row, section_key)
         txt = render_section(row, section_key)
@@ -620,7 +626,7 @@ async def custom_text_input(m: Message, state: FSMContext):
 async def cb_regen(q: CallbackQuery):
     _, dev_id, section_key = q.data.split("|", 2)
     dev_id = int(dev_id)
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     if not row.get("sections_json"):
         await q.answer("сначала /build", show_alert=True)
         return
@@ -677,12 +683,12 @@ async def cb_regen(q: CallbackQuery):
             new_variants = new_variants[:5]
 
         sections[section_key] = {"variants": new_variants}
-        update_deviation(con, dev_id, sections=sections)
+        update_deviation(get_con(), dev_id, sections=sections)
     except Exception as e:
         await q.message.answer(f"regen упал: {e}\nсырец (до 900):\n{raw[:900]}")
         return
 
-    row = get_deviation(con, dev_id)
+    row = get_deviation(get_con(), dev_id)
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
