@@ -353,6 +353,7 @@ async def handle_full_description(m: Message, state: FSMContext):
         await progress_msg.delete()
         
         selected = to_jsonable(parsed.selected)
+        print(f"DEBUG selected: {selected}")  # временно для отладки
         
         cat = selected.get('deviation_category', {})
         risk = selected.get('risk', {})
