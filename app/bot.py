@@ -133,8 +133,7 @@ SECTION_ORDER = [
 def main_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📝 новое отклонение")],
-            [KeyboardButton(text="🤖 генерация"), KeyboardButton(text="👁 просмотр")]
+            [KeyboardButton(text="📝 новое отклонение")]
         ],
         resize_keyboard=True
     )
@@ -237,7 +236,7 @@ async def check_password(m: Message, state: FSMContext):
     if m.text.strip() == VALID_PASSWORD:
         authorize_user(m.from_user.id)
         await state.clear()
-        await m.answer("✅ Доступ разрешён! Используйте /start для начала работы", reply_markup=main_menu())
+        await m.answer("✅ Доступ разрешён!\n\nНажмите кнопку \"📝 новое отклонение\" или /new", reply_markup=main_menu())
     else:
         await m.answer("❌ Неверный пароль. Попробуйте ещё раз:")
 
@@ -250,6 +249,19 @@ async def new(m: Message, state: FSMContext):
     
     await state.set_state(NewDeviation.full_description)
     await m.answer(
+        "⚠️ ВНИМАНИЕ - ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ:\n\n"
+        "Данный бот НЕ предназначен для обработки информации, содержащей:\n"
+        "• Государственную тайну (ФЗ-5487-1 «О государственной тайне»)\n"
+        "• Коммерческую тайну (ФЗ-98 «О коммерческой тайне»)\n"
+        "• Персональные данные (ФЗ-152 «О персональных данных»)\n"
+        "• Инсайдерскую информацию (ФЗ-224)\n"
+        "• Служебную информацию ограниченного распространения\n\n"
+        "Вся ответственность за использование конфиденциальной информации лежит ИСКЛЮЧИТЕЛЬНО на пользователе.\n\n"
+        "Используя бот, вы подтверждаете, что:\n"
+        "✓ Ознакомлены с данным предупреждением\n"
+        "✓ Несёте полную ответственность за вводимую информацию\n"
+        "✓ Не будете вводить конфиденциальные данные\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Опиши отклонение по шаблону (если чего-то не знаешь – нормально, я подставлю типовые примеры из практики):\n\n"
         "1️⃣ ЧТО нарушено? (какая норма/договор/лна)\n"
         "2️⃣ ГДЕ? (подразделение/процесс)\n"
@@ -286,7 +298,68 @@ async def handle_full_description(m: Message, state: FSMContext):
     
     dev_id = create_deviation(con, telegram_user_id=m.from_user.id, user_input=ui)
     await state.clear()
-    await m.answer(f"Черновик создан: id={dev_id}\n/build {dev_id} — сгенерировать отчёт")
+    
+    # Автоматическая генерация с прогресс-баром
+    progress_msg = await m.answer("⏳ Сейчас я помогу тебе понять влияние отклонения на бизнес\n\n░░░░░░░░░░ 0%")
+    
+    try:
+        await progress_msg.edit_text("⏳ Анализирую описание...\n\n██░░░░░░░░ 20%")
+        
+        row = get_deviation(con, dev_id)
+        ui_data = json.loads(row["user_input_json"])
+        ui_obj = UserInput(**ui_data)
+        
+        await progress_msg.edit_text("⏳ Подбираю классификаторы...\n\n████░░░░░░ 40%")
+        
+        candidates = topk_candidates(llm_embeddings, ui_obj, CATEGORIES, RISKS, CAT_MAT, RISK_MAT, k=20)
+        
+        await progress_msg.edit_text("⏳ Генерирую анализ (Claude AI)...\n\n██████░░░░ 60%")
+        
+        messages = [
+            {"role": "system", "text": SYSTEM_PROMPT},
+            {"role": "user", "text": build_user_prompt(ui, candidates)},
+        ]
+        raw = llm.completion(messages, temperature=0.2, max_tokens=16000)
+        
+        await progress_msg.edit_text("⏳ Обрабатываю результат...\n\n████████░░ 80%")
+        
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.split("\n", 1)[1] if "\n" in clean else ""
+            if "```" in clean:
+                clean = clean.rsplit("```", 1)[0]
+        clean = clean.strip()
+        
+        import re
+        clean = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', clean)
+        
+        data = json.loads(clean)
+        
+        if "sections" in data:
+            for section_key, section_data in data["sections"].items():
+                if isinstance(section_data, dict) and "text" in section_data and "variants" not in section_data:
+                    section_data["variants"] = ["v1", "v2", "v3"]
+        
+        parsed = LLMResponse(**data)
+        
+        await progress_msg.edit_text("⏳ Сохраняю результат...\n\n██████████ 100%")
+        
+        sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
+        update_deviation(con, dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
+        
+        await progress_msg.delete()
+        
+        selected = parsed.selected
+        txt = (
+            f"✅ Анализ готов!\n\n"
+            f"Категория: {selected.deviation_category.primary_id}\n"
+            f"Риск: {selected.risk.primary_id}\n\n"
+            f"Выбери раздел для просмотра:"
+        )
+        await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
+        
+    except Exception as e:
+        await progress_msg.edit_text(f"❌ Ошибка генерации: {e}")
 
 @dp.message(Command("build"))
 async def build(m: Message):
