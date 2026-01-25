@@ -237,7 +237,7 @@ async def new(m: Message, state: FSMContext):
         "• Инсайдерскую информацию (ФЗ-224)\n"
         "• Служебную информацию ограниченного распространения\n\n"
         "Вся ответственность лежит ИСКЛЮЧИТЕЛЬНО на пользователе.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "\n"
         "Опиши отклонение по шаблону (если чего-то не знаешь – нормально, я подставлю типовые примеры из практики):\n\n"
         "1️⃣ ЧТО нарушено? (какая норма/договор/лна)\n"
         "2️⃣ ГДЕ? (подразделение/процесс)\n"
@@ -369,7 +369,7 @@ async def handle_full_description(m: Message, state: FSMContext):
         
         txt = (
             f"✅ Анализ готов!\n\n"
-            f"━━━ ВЫБОР КАТЕГОРИЙ ИЗ 1С СВКиА ━━━\n\n"
+            f"📊 ВЫБОР КАТЕГОРИЙ ИЗ 1С СВКиА\n\n"
             f"📋 КАТЕГОРИИ ОТКЛОНЕНИЯ:\n"
             f"1️⃣ {cat_primary}\n"
             f"2️⃣ {cat_alt}\n"
@@ -378,7 +378,7 @@ async def handle_full_description(m: Message, state: FSMContext):
             f"1️⃣ {risk_primary}\n"
             f"2️⃣ {risk_alt}\n"
             f"💬 {risk_rationale}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"\n"
             f"Выбери раздел для просмотра:"
         )
         await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
