@@ -495,12 +495,43 @@ async def cb_back(q: CallbackQuery):
     dev_id = int(dev_id)
     row = get_deviation(con, dev_id)
     selected = _loads(row.get("selected_json"))
+    
+    cat = selected.get('deviation_category', {})
+    risk = selected.get('risk', {})
+    
+    cat_primary = cat.get('primary_id', 'Не определена')
+    cat_alts = cat.get('alternatives', [])
+    cat_alt = cat_alts[0] if cat_alts else ''
+    cat_rationale = cat.get('rationale', '')
+    
+    risk_primary = risk.get('primary_id', 'Не определён')
+    risk_alts = risk.get('alternatives', [])
+    risk_alt = risk_alts[0] if risk_alts else ''
+    risk_rationale = risk.get('rationale', '')
+    
     txt = (
-        f"категория: {cat_title(selected.get('deviation_category',{}).get('primary_id',''))}\n"
-        f"риск: {risk_title(selected.get('risk',{}).get('primary_id',''))}\n\n"
-        "выбери раздел:"
+        f"✅ Анализ готов!\n\n"
+        f"📊 ВЫБОР КАТЕГОРИЙ ИЗ 1С СВКиА\n\n"
+        f"📋 КАТЕГОРИИ ОТКЛОНЕНИЯ:\n"
+        f"1️⃣ {cat_primary}\n"
     )
-    await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup(), )
+    if cat_alt:
+        txt += f"2️⃣ {cat_alt}\n"
+    if cat_rationale:
+        txt += f"💬 {cat_rationale}\n"
+    
+    txt += (
+        f"\n⚠️ КАТЕГОРИИ РИСКОВ:\n"
+        f"1️⃣ {risk_primary}\n"
+    )
+    if risk_alt:
+        txt += f"2️⃣ {risk_alt}\n"
+    if risk_rationale:
+        txt += f"💬 {risk_rationale}\n"
+    
+    txt += "\n\nВыбери раздел для просмотра:"
+    
+    await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup())
     await q.answer()
 
 @dp.callback_query(F.data.startswith("sec|"))
