@@ -216,13 +216,13 @@ async def check_password(m: Message, state: FSMContext):
         await state.clear()
         await m.answer("✅ Доступ разрешён!\n\nНажмите кнопку \"📝 новое отклонение\" или /new", reply_markup=main_menu())
     else:
-        await m.answer("❌ Неверный пароль. Попробуйте ещё раз:")
+        await m.answer("❌ Неверный пароль. Попробуйте ещё раз:", reply_markup=main_menu())
 
 @dp.message(Command("new"))
 async def new(m: Message, state: FSMContext):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start")
+        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
         return
     
     await state.set_state(NewDeviation.full_description)
@@ -254,7 +254,7 @@ async def handle_full_description(m: Message, state: FSMContext):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
         await state.clear()
-        await m.answer("❌ Сначала авторизуйтесь через /start")
+        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
         return
     
     description = m.text.strip()
@@ -386,17 +386,18 @@ async def handle_full_description(m: Message, state: FSMContext):
         
     except Exception as e:
         await progress_msg.edit_text(f"❌ Ошибка генерации: {e}")
+        await m.answer("Попробуй ещё раз:", reply_markup=main_menu())
 
 @dp.message(Command("build"))
 async def build(m: Message):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start")
+        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
         return
     
     parts = m.text.split()
     if len(parts) < 2:
-        await m.answer("используй: /build <id>")
+        await m.answer("используй: /build <id>", reply_markup=main_menu())
         return
     dev_id = int(parts[1])
     row = get_deviation(get_con(), dev_id)
@@ -445,18 +446,18 @@ async def build(m: Message):
 
     sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
     update_deviation(get_con(), dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
-    await m.answer(f"Готово!\n/preview {dev_id} — просмотр и выбор вариантов разделов")
+    await m.answer(f"Готово!\n/preview {dev_id} — просмотр и выбор вариантов разделов", reply_markup=main_menu())
 
 @dp.message(Command("preview"))
 async def preview(m: Message):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start")
+        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
         return
     
     parts = m.text.split()
     if len(parts) < 2:
-        await m.answer("используй: /preview <id>")
+        await m.answer("используй: /preview <id>", reply_markup=main_menu())
         return
     dev_id = int(parts[1])
     row = get_deviation(get_con(), dev_id)
@@ -723,7 +724,7 @@ async def main():
 async def btn_new(m: Message, state: FSMContext):
     # проверяем авторизацию (раз в сутки)
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start")
+        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
         return
     
     await state.set_state(NewDeviation.full_description)
