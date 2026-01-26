@@ -411,6 +411,7 @@ async def handle_full_description(m: Message, state: FSMContext):
     except Exception as e:
         await progress_msg.edit_text(f"❌ Ошибка генерации: {e}")
         await m.answer("Попробуй ещё раз:", reply_markup=main_menu())
+        await m.answer("Попробуй ещё раз:", reply_markup=main_menu())
 
 @dp.message(Command("build"))
 async def build(m: Message):
@@ -465,7 +466,7 @@ async def build(m: Message):
         
         parsed = LLMResponse(**data)
     except Exception as e:
-        await m.answer(f"gpt вернул невалидный json. ошибка: {e}\nсырец (первые 1200 символов):\n{raw[:1200]}")
+        await m.answer(f"gpt вернул невалидный json. ошибка: {e}\nсырец (первые 1200 символов):\n{raw[:1200]}", reply_markup=main_menu())
         return
 
     sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
@@ -486,7 +487,7 @@ async def preview(m: Message):
     dev_id = int(parts[1])
     row = get_deviation(get_con(), dev_id)
     if not row.get("sections_json"):
-        await m.answer("нет генерации. сначала /build")
+        await m.answer("нет генерации. сначала /build", reply_markup=main_menu())
         return
 
     selected = _loads(row.get("selected_json"))
@@ -512,7 +513,7 @@ async def preview(m: Message):
         if "alternatives" in risk and len(risk["alternatives"]) >= 1:
             classification_text += f"2. {risk['alternatives'][0]}\n\n"
     
-    await m.answer(classification_text)  # БЕЗ 
+    await m.answer(classification_text, reply_markup=main_menu()) 
     
     txt = "\nВыберите варианты разделов:"
     await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
@@ -609,7 +610,7 @@ async def cb_custom(q: CallbackQuery, state: FSMContext):
     _, dev_id, section_key = q.data.split("|", 2)
     await state.update_data(dev_id=int(dev_id), section_key=section_key)
     await state.set_state(CustomVariant.text_input)
-    await q.message.answer("Введите свой текст для этого раздела:")
+    await q.message.answer("Введите свой текст для этого раздела:", reply_markup=main_menu())
     await q.answer()
 
 @dp.message(CustomVariant.text_input)
