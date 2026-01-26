@@ -533,7 +533,11 @@ async def preview(m: Message):
 async def cb_back(q: CallbackQuery):
     _, dev_id = q.data.split("|", 1)
     dev_id = int(dev_id)
-    row = get_deviation(get_con(), dev_id)
+    try:
+        row = get_deviation(get_con(), dev_id)
+    except ValueError:
+        await q.answer("❌ Отклонение не найдено (старые данные). Создай новое через кнопку ниже.", show_alert=True)
+        return
     selected = _loads(row.get("selected_json"))
     
     cat = selected.get('deviation_category', {})
@@ -578,7 +582,11 @@ async def cb_back(q: CallbackQuery):
 async def cb_section(q: CallbackQuery):
     _, dev_id, section_key = q.data.split("|", 2)
     dev_id = int(dev_id)
-    row = get_deviation(get_con(), dev_id)
+    try:
+        row = get_deviation(get_con(), dev_id)
+    except ValueError:
+        await q.answer("❌ Отклонение не найдено (старые данные). Создай новое через кнопку ниже.", show_alert=True)
+        return
     idx = get_chosen_variant(row, section_key)
     mode = get_view_mode(row, section_key)
     txt = render_section(row, section_key)
