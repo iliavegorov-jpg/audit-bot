@@ -21,6 +21,8 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 from aiogram.filters import Command
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -85,7 +87,18 @@ def authorize_user(user_id: int):
     db_authorize_user(get_con(), user_id)
 
 bot = Bot(token=SET.bot_token)
-dp = Dispatcher()
+# FSM storage - Redis если есть, иначе Memory
+REDIS_URL = os.getenv("REDIS_URL")
+if REDIS_URL:
+    from redis.asyncio import Redis
+    redis_client = Redis.from_url(REDIS_URL)
+    storage = RedisStorage(redis_client)
+    print("FSM: Redis storage")
+else:
+    storage = MemoryStorage()
+    print("FSM: Memory storage")
+
+dp = Dispatcher(storage=storage)
 
 class AuthState(StatesGroup):
     waiting_password = State()
