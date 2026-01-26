@@ -156,7 +156,7 @@ SECTION_TITLES = {
     "essence": "📝 формулировки отклонения",
     "root_causes": "🔍 коренные причины",
     "cost_impact": "💰 стоимость и влияние на показатели",
-    "financial_statements": "📐 формулы EBITDA и ССДП",
+    "financial_statements": "📑 Финансовая отчётность",
     "risk_cost_scenarios": "📊 стоимость риска (сценарии)",
     "risk_factors": "⚡ риск-факторы",
     "rsbu_checks": "📒 РСБУ: проводки и проверки",
