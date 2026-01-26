@@ -343,13 +343,19 @@ async def handle_full_description(m: Message, state: FSMContext):
         import concurrent.futures
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            try:
-                raw = await asyncio.wait_for(
-                    loop.run_in_executor(pool, lambda: llm.completion(messages, temperature=0.2, max_tokens=16000)),
-                    timeout=180  # 3 минуты максимум
-                )
-            except asyncio.TimeoutError:
-                raise Exception("Таймаут LLM - попробуй ещё раз")
+            # до 2 попыток с таймаутом 5 минут
+            for attempt in range(2):
+                try:
+                    raw = await asyncio.wait_for(
+                        loop.run_in_executor(pool, lambda: llm.completion(messages, temperature=0.2, max_tokens=16000)),
+                        timeout=300  # 5 минут
+                    )
+                    break
+                except asyncio.TimeoutError:
+                    if attempt == 0:
+                        await progress_msg.edit_text("⏳ LLM думает долго, пробую ещё раз...\n\n██████░░░░ 60%")
+                        continue
+                    raise Exception("Таймаут LLM - сервер перегружен, попробуй позже")
         
         progress_task.cancel()
         await progress_msg.edit_text("⏳ Обрабатываю результат...\n\n█████████▒ 95%")
