@@ -194,6 +194,13 @@ def render_section(row: Dict[str, Any], section_key: str) -> str:
 
 @dp.message(Command("start"))
 async def start(m: Message, state: FSMContext):
+    # защита от дублей
+    if m.message_id in processed_updates:
+        return
+    processed_updates.add(m.message_id)
+    if len(processed_updates) > MAX_PROCESSED:
+        processed_updates.clear()
+    
     user_id = m.from_user.id
     
     # Если уже авторизован в БД, показываем меню
