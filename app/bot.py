@@ -223,14 +223,14 @@ async def start(m: Message, state: FSMContext):
     # Если уже авторизован в БД, показываем меню
     if is_authorized(user_id):
         await m.answer(
-"✅ Добро пожаловать!\n\nДля создания карточки отклонения используйте /new"
+"✅ Добро пожаловать!\n\nДля создания карточки отклонения используйте /new", reply_markup=main_menu()
         )
         return
     
     # Если не авторизован, просим пароль
     await state.set_state(AuthState.waiting_password)
     await m.answer(
-        "🔐 Для доступа к боту введите пароль:"
+        "🔐 Для доступа к боту введите пароль:", reply_markup=main_menu()
     )
 
 @dp.message(AuthState.waiting_password)
@@ -583,6 +583,8 @@ async def cb_back(q: CallbackQuery):
     txt += "\n\nВыбери раздел для просмотра:"
     
     await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup())
+    # восстанавливаем reply keyboard
+    await q.message.answer("⬆️ Выбери раздел выше", reply_markup=main_menu())
     await q.answer()
 
 @dp.callback_query(F.data.startswith("sec|"))
