@@ -72,6 +72,10 @@ _init_con.close()
 # Авторизация через db.py (поддержка PostgreSQL)
 from .db import is_user_authorized, authorize_user as db_authorize_user
 
+# защита от дублей сообщений
+processed_updates = set()
+MAX_PROCESSED = 1000
+
 def is_authorized(user_id: int) -> bool:
     """Проверка авторизации пользователя (раз в сутки)"""
     return is_user_authorized(get_con(), user_id)
