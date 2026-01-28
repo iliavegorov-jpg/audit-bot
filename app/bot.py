@@ -168,6 +168,9 @@ def kb_sections(dev_id: int) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     for key in SECTION_ORDER:
         kb.button(text=SECTION_TITLES[key], callback_data=f"sec|{dev_id}|{key}")
+    # отдельная строка - кнопка нового отклонения
+    kb.button(text="━━━━━━━━━━━━━━━", callback_data="ignore")
+    kb.button(text="🆕 НОВОЕ ОТКЛОНЕНИЕ", callback_data="new_deviation")
     kb.adjust(1)
     return kb
 
@@ -175,8 +178,11 @@ def kb_section_controls(dev_id: int, section_key: str, current_idx: int, mode: s
     """кнопка назад"""
     kb = InlineKeyboardBuilder()
     
-    # только назад
+    # назад
     kb.button(text="← назад", callback_data=f"back|{dev_id}")
+    # новое отклонение
+    kb.button(text="🆕 Новое", callback_data="new_deviation")
+    kb.adjust(2)
     
     return kb.as_markup()
 
@@ -535,6 +541,38 @@ async def preview(m: Message):
 # async def export_cmd(m: Message):
 #     # ВРЕМЕННО ОТКЛЮЧЕНО
 #     pass
+
+
+@dp.callback_query(F.data == "ignore")
+async def cb_ignore(q: CallbackQuery):
+    await q.answer()
+
+@dp.callback_query(F.data == "new_deviation")
+async def cb_new_deviation(q: CallbackQuery, state: FSMContext):
+    if not is_authorized(q.from_user.id):
+        await q.answer("❌ Сначала авторизуйтесь через /start", show_alert=True)
+        return
+    
+    await state.set_state(NewDeviation.full_description)
+    await q.message.answer(
+        "⚠️ ВНИМАНИЕ - ОТКАЗ ОТ ОТВЕТСТВЕННОСТИ:\n\n"
+        "Данный бот НЕ предназначен для обработки информации, содержащей:\n"
+        "• Государственную тайну (ФЗ-5487-1)\n"
+        "• Коммерческую тайну (ФЗ-98)\n"
+        "• Персональные данные (ФЗ-152)\n"
+        "• Инсайдерскую информацию (ФЗ-224)\n"
+        "• Служебную информацию ограниченного распространения\n\n"
+        "Вся ответственность лежит ИСКЛЮЧИТЕЛЬНО на пользователе.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Опиши отклонение по шаблону:\n\n"
+        "1️⃣ ЧТО нарушено?\n"
+        "2️⃣ ГДЕ?\n"
+        "3️⃣ КОГДА?\n"
+        "4️⃣ ПОЧЕМУ?\n"
+        "5️⃣ КТО?",
+        reply_markup=main_menu()
+    )
+    await q.answer()
 
 @dp.callback_query(F.data.startswith("back|"))
 async def cb_back(q: CallbackQuery):
