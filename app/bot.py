@@ -583,8 +583,6 @@ async def cb_back(q: CallbackQuery):
     txt += "\n\nВыбери раздел для просмотра:"
     
     await q.message.edit_text(txt, reply_markup=kb_sections(dev_id).as_markup())
-    # восстанавливаем reply keyboard
-    await q.message.answer("⬆️ Выбери раздел выше", reply_markup=main_menu())
     await q.answer()
 
 @dp.callback_query(F.data.startswith("sec|"))
