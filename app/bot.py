@@ -223,14 +223,14 @@ async def start(m: Message, state: FSMContext):
     # Если уже авторизован в БД, показываем меню
     if is_authorized(user_id):
         await m.answer(
-"✅ Добро пожаловать!\n\nДля создания карточки отклонения используйте /new", reply_markup=main_menu()
+"✅ Добро пожаловать!\n\nДля создания карточки отклонения используйте /new"
         )
         return
     
     # Если не авторизован, просим пароль
     await state.set_state(AuthState.waiting_password)
     await m.answer(
-        "🔐 Для доступа к боту введите пароль:", reply_markup=main_menu()
+        "🔐 Для доступа к боту введите пароль:"
     )
 
 @dp.message(AuthState.waiting_password)
@@ -238,15 +238,15 @@ async def check_password(m: Message, state: FSMContext):
     if m.text.strip() == VALID_PASSWORD:
         authorize_user(m.from_user.id)
         await state.clear()
-        await m.answer("✅ Доступ разрешён!\n\nНажмите кнопку \"📝 новое отклонение\" или /new", reply_markup=main_menu())
+        await m.answer("✅ Доступ разрешён!\n\nНажмите кнопку \"📝 новое отклонение\" или /new")
     else:
-        await m.answer("❌ Неверный пароль. Попробуйте ещё раз:", reply_markup=main_menu())
+        await m.answer("❌ Неверный пароль. Попробуйте ещё раз:")
 
 @dp.message(Command("new"))
 async def new(m: Message, state: FSMContext):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+        await m.answer("❌ Сначала авторизуйтесь через /start")
         return
     
     await state.set_state(NewDeviation.full_description)
@@ -278,7 +278,7 @@ async def handle_full_description(m: Message, state: FSMContext):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
         await state.clear()
-        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+        await m.answer("❌ Сначала авторизуйтесь через /start")
         return
     
     description = m.text.strip()
@@ -419,23 +419,23 @@ async def handle_full_description(m: Message, state: FSMContext):
         await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
         # добавляем кнопку "новое отклонение" внизу
         await m.answer("⚠️ ВНИМАНИЕ: Данный анализ является предварительным и требует обязательной проверки бухгалтером/аудитором перед использованием в работе.")
-        await m.answer("👇 Для нового анализа нажми кнопку «📝 новое отклонение» ниже", reply_markup=main_menu())
+        await m.answer("👇 Для нового анализа нажми кнопку «📝 новое отклонение» ниже")
         
     except Exception as e:
         await progress_msg.edit_text(f"❌ Ошибка генерации: {e}")
-        await m.answer("Попробуй ещё раз:", reply_markup=main_menu())
-        await m.answer("Попробуй ещё раз:", reply_markup=main_menu())
+        await m.answer("Попробуй ещё раз:")
+        await m.answer("Попробуй ещё раз:")
 
 @dp.message(Command("build"))
 async def build(m: Message):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+        await m.answer("❌ Сначала авторизуйтесь через /start")
         return
     
     parts = m.text.split()
     if len(parts) < 2:
-        await m.answer("используй: /build <id>", reply_markup=main_menu())
+        await m.answer("используй: /build <id>")
         return
     dev_id = int(parts[1])
     row = get_deviation(get_con(), dev_id)
@@ -479,28 +479,28 @@ async def build(m: Message):
         
         parsed = LLMResponse(**data)
     except Exception as e:
-        await m.answer(f"gpt вернул невалидный json. ошибка: {e}\nсырец (первые 1200 символов):\n{raw[:1200]}", reply_markup=main_menu())
+        await m.answer(f"gpt вернул невалидный json. ошибка: {e}\nсырец (первые 1200 символов):\n{raw[:1200]}")
         return
 
     sections_dump = {k: v.model_dump() for k, v in parsed.sections.items()}
     update_deviation(get_con(), dev_id, selected=to_jsonable(parsed.selected), sections=sections_dump)
-    await m.answer(f"Готово!\n/preview {dev_id} — просмотр и выбор вариантов разделов", reply_markup=main_menu())
+    await m.answer(f"Готово!\n/preview {dev_id} — просмотр и выбор вариантов разделов")
 
 @dp.message(Command("preview"))
 async def preview(m: Message):
     # Проверка авторизации
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+        await m.answer("❌ Сначала авторизуйтесь через /start")
         return
     
     parts = m.text.split()
     if len(parts) < 2:
-        await m.answer("используй: /preview <id>", reply_markup=main_menu())
+        await m.answer("используй: /preview <id>")
         return
     dev_id = int(parts[1])
     row = get_deviation(get_con(), dev_id)
     if not row.get("sections_json"):
-        await m.answer("нет генерации. сначала /build", reply_markup=main_menu())
+        await m.answer("нет генерации. сначала /build")
         return
 
     selected = _loads(row.get("selected_json"))
@@ -526,7 +526,7 @@ async def preview(m: Message):
         if "alternatives" in risk and len(risk["alternatives"]) >= 1:
             classification_text += f"2. {risk['alternatives'][0]}\n\n"
     
-    await m.answer(classification_text, reply_markup=main_menu()) 
+    await m.answer(classification_text) 
     
     txt = "\nВыберите варианты разделов:"
     await m.answer(txt, reply_markup=kb_sections(dev_id).as_markup())
@@ -562,8 +562,7 @@ async def cb_new_deviation(q: CallbackQuery, state: FSMContext):
         "2️⃣ ГДЕ?\n"
         "3️⃣ КОГДА?\n"
         "4️⃣ ПОЧЕМУ?\n"
-        "5️⃣ КТО?",
-        reply_markup=main_menu()
+        "5️⃣ КТО?"
     )
     await q.answer()
 
@@ -662,7 +661,7 @@ async def cb_custom(q: CallbackQuery, state: FSMContext):
     _, dev_id, section_key = q.data.split("|", 2)
     await state.update_data(dev_id=int(dev_id), section_key=section_key)
     await state.set_state(CustomVariant.text_input)
-    await q.message.answer("Введите свой текст для этого раздела:", reply_markup=main_menu())
+    await q.message.answer("Введите свой текст для этого раздела:")
     await q.answer()
 
 @dp.message(CustomVariant.text_input)
@@ -801,7 +800,7 @@ async def main():
 async def btn_new(m: Message, state: FSMContext):
     # проверяем авторизацию (раз в сутки)
     if not is_authorized(m.from_user.id):
-        await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+        await m.answer("❌ Сначала авторизуйтесь через /start")
         return
     
     await state.set_state(NewDeviation.full_description)
@@ -833,13 +832,12 @@ async def fallback_text(m: Message, state: FSMContext):
     # Если нет состояния - пользователь ввёл текст просто так
     if current_state is None:
         if not is_authorized(m.from_user.id):
-            await m.answer("❌ Сначала авторизуйтесь через /start", reply_markup=main_menu())
+            await m.answer("❌ Сначала авторизуйтесь через /start")
             return
         
         await m.answer(
             "👆 Чтобы создать анализ отклонения, нажми кнопку «📝 новое отклонение» ниже.\n\n"
-            "Если хочешь начать анализ прямо сейчас - нажми кнопку и введи описание.",
-            reply_markup=main_menu()
+            "Если хочешь начать анализ прямо сейчас - нажми кнопку и введи описание."
         )
 
 if __name__ == "__main__":
