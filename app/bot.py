@@ -17,7 +17,7 @@ def to_jsonable(obj):
     return obj
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardRemove, Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
@@ -231,7 +231,7 @@ async def start(m: Message, state: FSMContext):
     # Если не авторизован, просим пароль
     await state.set_state(AuthState.waiting_password)
     await m.answer(
-        "🔐 Для доступа к боту введите пароль:"
+        "🔐 Для доступа к боту введите пароль:", reply_markup=ReplyKeyboardRemove()
     )
 
 @dp.message(AuthState.waiting_password)
